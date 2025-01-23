@@ -1,0 +1,335 @@
+use clap::Parser;
+use g_code::{
+    emit::{format_gcode_io, FormatOptions},
+    parse::snippet_parser,
+};
+use log::{error, info};
+use roxmltree::ParsingOptions;
+use std::{
+    env,
+    fs::File,
+    io::{self, Read, Write},
+    path::PathBuf,
+};
+use svgtypes::LengthListParser;
+
+use svg2gcode::{
+    svg2program, ConversionOptions, Machine, Settings, SupportedFunctionality, Version,
+};
+
+#[derive(Debug, Parser)]
+#[command(name = "svg2gcode", version, author, about)]
+struct Opt {
+    /// Curve interpolation tolerance (mm)
+    #[arg(long)]
+    tolerance: Option<f64>,
+    /// Machine feed rate (mm/min)
+    #[arg(long)]
+    feedrate: Option<f64>,
+    /// Dots per Inch (DPI)
+    /// Used for scaling visual units (pixels, points, picas, etc.)
+    #[arg(long)]
+    dpi: Option<f64>,
+    #[arg(alias = "tool_on_sequence", long = "on")]
+    /// G-Code for turning on the tool
+    tool_on_sequence: Option<String>,
+    #[arg(alias = "tool_off_sequence", long = "off")]
+    /// G-Code for turning off the tool
+    tool_off_sequence: Option<String>,
+    /// G-Code for initializing the machine at the beginning of the program
+    #[arg(alias = "begin_sequence", long = "begin")]
+    begin_sequence: Option<String>,
+    /// G-Code for stopping/idling the machine at the end of the program
+    #[arg(alias = "end_sequence", long = "end")]
+    end_sequence: Option<String>,
+    /// A file path to an SVG, else reads from stdin
+    file: Option<PathBuf>,
+    /// Output file path (overwrites old files), else writes to stdout
+    #[arg(short, long)]
+    out: Option<PathBuf>,
+    /// Provide settings from a JSON file. Overrides command-line arguments.
+    #[arg(long)]
+    settings: Option<PathBuf>,
+    /// Export current settings to a JSON file instead of converting.
+    ///
+    /// Use `-` to export to standard out.
+    #[arg(long)]
+    export: Option<PathBuf>,
+    /// Coordinates for the bottom left corner of the machine
+    #[arg(long, allow_hyphen_values = true)]
+    origin: Option<String>,
+    /// Override the width and height of the SVG (i.e. 210mm,297mm)
+    ///
+    /// Useful when the SVG does not specify these (see https://github.com/sameer/svg2gcode/pull/16)
+    ///
+    /// Passing "210mm," or ",297mm" calculates the missing dimension to conform to the viewBox aspect ratio.
+    #[arg(long)]
+    dimensions: Option<String>,
+    /// Whether to use circular arcs when generating g-code
+    ///
+    /// Please check if your machine supports G2/G3 commands before enabling this.
+    #[arg(long)]
+    circular_interpolation: Option<bool>,
+
+    #[arg(long)]
+    /// Include line numbers at the beginning of each line
+    ///
+    /// Useful for debugging/streaming g-code
+    line_numbers: Option<bool>,
+    #[arg(long)]
+    /// Include checksums at the end of each line
+    ///
+    /// Useful for streaming g-code
+    checksums: Option<bool>,
+    #[arg(long)]
+    /// Add a newline character before each comment
+    ///
+    /// Workaround for parsers that don't accept comments on the same line
+    newline_before_comment: Option<bool>,
+}
+
+fn main() -> io::Result<()> {
+    if env::var("RUST_LOG").is_err() {
+        env::set_var("RUST_LOG", "svg2gcode=info")
+    }
+    env_logger::init();
+
+    let opt = Opt::parse();
+
+    let settings = {
+        let mut settings = if let Some(path) = opt.settings {
+            serde_json::from_reader(File::open(path)?)?
+        } else {
+            Settings::default()
+        };
+
+        {
+            let conversion = &mut settings.conversion;
+            conversion.dpi = opt.dpi.unwrap_or(conversion.dpi);
+            conversion.feedrate = opt.feedrate.unwrap_or(conversion.feedrate);
+            conversion.tolerance = opt.tolerance.unwrap_or(conversion.tolerance);
+        }
+        {
+            let machine = &mut settings.machine;
+            machine.supported_functionality = SupportedFunctionality {
+                circular_interpolation: opt
+                    .circular_interpolation
+                    .unwrap_or(machine.supported_functionality.circular_interpolation),
+            };
+            if let seq @ Some(_) = opt.tool_on_sequence {
+                machine.tool_on_sequence = seq;
+            }
+            if let seq @ Some(_) = opt.tool_off_sequence {
+                machine.tool_off_sequence = seq;
+            }
+            if let seq @ Some(_) = opt.begin_sequence {
+                machine.begin_sequence = seq;
+            }
+            if let seq @ Some(_) = opt.end_sequence {
+                machine.end_sequence = seq;
+            }
+        }
+        {
+            if let Some(origin) = opt.origin {
+                for (i, dimension_origin) in origin
+                    .split(',')
+                    .map(|point| {
+                        if point.is_empty() {
+                            Default::default()
+                        } else {
+                            point.parse::<f64>().expect("could not parse coordinate")
+                        }
+                    })
+                    .take(2)
+                    .enumerate()
+                {
+                    settings.conversion.origin[i] = Some(dimension_origin);
+                }
+            }
+        }
+
+        if let Some(line_numbers) = opt.line_numbers {
+            settings.postprocess.line_numbers = line_numbers;
+        }
+
+        if let Some(checksums) = opt.checksums {
+            settings.postprocess.checksums = checksums;
+        }
+
+        if let Some(newline_before_comment) = opt.newline_before_comment {
+            settings.postprocess.newline_before_comment = newline_before_comment;
+        }
+
+        if let Version::Unknown(ref unknown) = settings.version {
+            error!(
+                "Your settings use an unknown version. Your version: {unknown}, latest: {}. See {} to download the latest CLI version.",
+                Version::latest(),
+                env!("CARGO_PKG_REPOSITORY"),
+            );
+            std::process::exit(1);
+        }
+
+        let old_version = settings.version.clone();
+        if let Err(msg) = settings.try_upgrade() {
+            error!(
+                "Your settings are out of date and require manual intervention: {msg}. Your version: {old_version}, latest: {}. See {} for instructions.",
+                Version::latest(),
+                env!("CARGO_PKG_REPOSITORY"),
+            );
+            std::process::exit(1);
+        }
+
+        settings
+    };
+
+    if let Some(export_path) = opt.export {
+        let config_json_bytes = serde_json::to_vec_pretty(&settings)?;
+        if export_path.to_string_lossy() == "-" {
+            return io::stdout().write_all(&config_json_bytes);
+        } else {
+            return File::create(export_path)?.write_all(&config_json_bytes);
+        }
+    }
+
+    let options = {
+        let mut dimensions = [None, None];
+
+        if let Some(dimensions_str) = opt.dimensions {
+            dimensions_str
+                .split(',')
+                .map(|dimension_str| {
+                    if dimension_str.is_empty() {
+                        None
+                    } else {
+                        LengthListParser::from(dimension_str)
+                            .next()
+                            .transpose()
+                            .expect("could not parse dimension")
+                    }
+                })
+                .take(2)
+                .enumerate()
+                .for_each(|(i, dimension_origin)| {
+                    dimensions[i] = dimension_origin;
+                });
+        }
+        ConversionOptions { dimensions }
+    };
+
+    let input = match opt.file {
+        Some(filename) => {
+            let mut f = File::open(filename)?;
+            let len = f.metadata()?.len();
+            let mut input = String::with_capacity(len as usize + 1);
+            f.read_to_string(&mut input)?;
+            input
+        }
+        None => {
+            info!("Reading from standard input");
+            let mut input = String::new();
+            io::stdin().read_to_string(&mut input)?;
+            input
+        }
+    };
+
+    let snippets = [
+        settings
+            .machine
+            .tool_on_sequence
+            .as_deref()
+            .map(snippet_parser)
+            .transpose(),
+        settings
+            .machine
+            .tool_off_sequence
+            .as_deref()
+            .map(snippet_parser)
+            .transpose(),
+        settings
+            .machine
+            .begin_sequence
+            .as_deref()
+            .map(snippet_parser)
+            .transpose(),
+        settings
+            .machine
+            .end_sequence
+            .as_deref()
+            .map(snippet_parser)
+            .transpose(),
+    ];
+
+    let machine = if let [Ok(tool_on_action), Ok(tool_off_action), Ok(program_begin_sequence), Ok(program_end_sequence)] =
+        snippets
+    {
+        Machine::new(
+            settings.machine.supported_functionality,
+            tool_on_action,
+            tool_off_action,
+            program_begin_sequence,
+            program_end_sequence,
+        )
+    } else {
+        use codespan_reporting::term::{
+            emit,
+            termcolor::{ColorChoice, StandardStream},
+        };
+        let mut writer = StandardStream::stderr(ColorChoice::Auto);
+        let config = codespan_reporting::term::Config::default();
+
+        for (i, (filename, gcode)) in [
+            ("tool_on_sequence", &settings.machine.tool_on_sequence),
+            ("tool_off_sequence", &settings.machine.tool_off_sequence),
+            ("begin_sequence", &settings.machine.begin_sequence),
+            ("end_sequence", &settings.machine.end_sequence),
+        ]
+        .iter()
+        .enumerate()
+        {
+            if let Err(err) = &snippets[i] {
+                emit(
+                    &mut writer,
+                    &config,
+                    &codespan_reporting::files::SimpleFile::new(filename, gcode.as_ref().unwrap()),
+                    &g_code::parse::into_diagnostic(err),
+                )
+                .unwrap();
+            }
+        }
+        std::process::exit(1)
+    };
+
+    let document = roxmltree::Document::parse_with_options(
+        &input,
+        ParsingOptions {
+            allow_dtd: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    let program = svg2program(&document, &settings.conversion, options, machine);
+
+    if let Some(out_path) = opt.out {
+        format_gcode_io(
+            &program,
+            FormatOptions {
+                line_numbers: settings.postprocess.line_numbers,
+                checksums: settings.postprocess.checksums,
+                ..Default::default()
+            },
+            File::create(out_path)?,
+        )
+    } else {
+        format_gcode_io(
+            &program,
+            FormatOptions {
+                line_numbers: settings.postprocess.line_numbers,
+                checksums: settings.postprocess.checksums,
+                newline_before_comment: settings.postprocess.newline_before_comment,
+                ..Default::default()
+            },
+            std::io::stdout(),
+        )
+    }
+}

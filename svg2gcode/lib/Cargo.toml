@@ -1,0 +1,39 @@
+[package]
+name = "svg2gcode"
+version = "0.3.3"
+description = "Convert paths in SVG files to GCode for a pen plotter, laser engraver, or other machine."
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[features]
+serde = ["dep:serde", "dep:serde_repr", "g-code/serde"]
+
+[dependencies]
+g-code.workspace = true
+lyon_geom = "1.0.5"
+euclid = "0.22"
+log.workspace = true
+uom = "0.36"
+roxmltree.workspace = true
+svgtypes.workspace = true
+paste = "1.0"
+
+[dependencies.serde]
+default-features = false
+optional = true
+version = "1"
+features = ["derive"]
+
+[dependencies.serde_repr]
+optional = true
+version = "0.1"
+
+[dev-dependencies]
+cairo-rs = { version = "0.18", default-features = false, features = [
+    "svg",
+    "v1_16",
+] }
+serde_json.workspace = true
+pretty_assertions = "1.4.0"

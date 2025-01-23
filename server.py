@@ -57,6 +57,9 @@ def process_image():
         
         # Open, crop to square, resize, and save image
         image = Image.open(file.stream)
+        # Convert to RGB if needed
+        if image.mode == 'RGBA':
+            image = image.convert('RGB')
         image = crop_to_square(image)
         image = image.resize((512, 512), Image.Resampling.LANCZOS)
         image.save(image_path, "JPEG", quality=95)
