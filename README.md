@@ -42,11 +42,12 @@ python server.py
 
 3. Upload an image and configure settings:
 
-   - Contrast Threshold: Controls line detection sensitivity (0-50)
+   - Contrast Threshold: Controls line detection sensitivity (lower is more sensitive) (0-50)
    - Minimum Path Length: Filters short path segments (0-150)
    - Remove Background: Toggle background removal
    - Tool On Command (default: M3)
    - Tool Off Command (default: M5)
+   - Press the Button to Process the Image! (**First time running might take a few minutes to build the gcode generator and download the model for removing the background**)
 
 ## License
 
