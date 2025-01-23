@@ -1,31 +1,64 @@
-### ImageToLines
+# Image to Line Art Converter
 
-This is a program that converts your image to a series of lines (and sometimes dots).
+A web application that converts uploaded images into artistic line art SVG drawings using a combination of Python and Rust processing.
 
-The way that this works is quite simple.<br/>
-The program just takes the image and loops over each pixel, for which it samples all 9 surrounding pixels (including the pixel it's iterating over), and it calculates the average difference/contrast, for which it then places a pixel if there's enough contrast, and doesn't place a pixel if there isn't enough.
+## Features
 
-To start you want to compile the program using cargo build.<br/>
-Then you want to create the files img_name.txt, pixel_drawing_settings.txt.<br/>
-You can then plop in your image.<br/>
-Write the filepath to your image in img_name.txt.<br/>
-Then write the contrast setting (what minimum contrast is required to draw a pixel) in pixel_drawing_settings.txt (there are currently no other settings that can be modified in pixel_drawing_settings.txt, but modifying the executable is easy enough).<br/>
-After that you can run the program and you should have your image in output.jpeg!<br/>
+- Image preprocessing with background removal
+- Configurable contrast settings 
+- Adjustable path length for line art generation
+- Outputs SVG vector graphics
+- Web interface for easy usage
 
-Btw, this uses the CPU rather than the GPU. The speed is still good enough for quick and easy use, where even a high quality images don't take that long to generate.
+## Requirements
 
-Here are some examples of the program in action (the sources for these images are in ./image-examples/ImageLinks.txt, and should be under the Creatives Commons Licenses, if they aren't or there are any other issues, please post an issue so that I can fix it):
+- Python 3.x
+- Rust/Cargo
+- Required Python packages:
+```sh
+pip install -r requirements.txt
+```
 
-![./image-examples/New_york_times_square-terabass.jpg-output.jpeg](./image-examples/New_york_times_square-terabass.jpg-output.jpeg)
-![./image-examples/New_york_times_square-terabass.jpg](./image-examples/New_york_times_square-terabass.jpg)
+## Setup
 
-![./image-examples/puppy.jpg](./image-examples/puppy.jpg)
-![./image-examples/puppy-output.jpeg](./image-examples/puppy-output.jpeg)
+1. Install dependencies:
+```sh
+pip install -r requirements.txt
+cargo build
+```
 
-And here below are 2 examples of how the minimum contrast to draw a pixel setting affects the image (this can be from 0-255):<br/>
+2. Ensure these directories exist:
 
-This is the difference at 5:
-![./image-examples/47167614751_556fcd4a3d_b-5-output.jpeg](./image-examples/47167614751_556fcd4a3d_b-5-output.jpeg)
-This is the difference at 10:
-![./image-examples/47167614751_556fcd4a3d_b-10-output.jpeg](./image-examples/47167614751_556fcd4a3d_b-10-output.jpeg)
-![./image-examples/47167614751_556fcd4a3d_b.jpg](./image-examples/47167614751_556fcd4a3d_b.jpg)
+   - nobg - For processed images without background
+   - images/output - For generated SVG files
+
+## Usage
+
+1. Start the server:
+```sh
+python server.py
+```
+
+2. Access the web interface at `http://localhost:5000`
+
+3. Upload an image and adjust parameters:
+   - **Contrast**: Controls the threshold for line generation (default: 12)
+   - **Path Length**: Minimum length for SVG path segments (default: 25)
+
+4. The server will:
+   - Crop and resize the image to 512x512
+   - Remove the background
+   - Process the image through the Rust engine
+   - Generate an SVG line art drawing
+   - Return a downloadable SVG file
+
+## Project Structure
+
+   - server.py - Flask web server handling image upload and processing
+   - preprocessing.py - Image preparation and background removal
+   - main.rs - Rust-based image processing core
+   - postprocessing.py - SVG generation and optimization
+
+## License
+
+See LICENSE.md for details.
