@@ -13,7 +13,9 @@ A web application that converts uploaded images into artistic line art SVG drawi
 ## Attribution
 
 The Rust image processing code is adapted from [ImageToLines by RandomGamingDev](https://github.com/RandomGamingDev/ImageToLines).
+The Rust gcode generation code is adapted from [svg2gcode by sameer](https://github.com/sameer/svg2gcode).
 Thank you for that.
+
 
 ## Requirements
 
