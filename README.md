@@ -25,18 +25,11 @@ The core functionality is built upon:
 
 ## Setup
 
-1. Install dependencies:
+Install dependencies:
 ```sh
 pip install -r requirements.txt
 cargo build --release
 ```
-
-2. Ensure these directories exist:
-
-   - images - For uploaded images
-   - nobg - For background-removed images
-   - output - For generated SVG files
-   - gcode - For generated G-code files
 
 ## Usage
 
