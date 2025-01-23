@@ -4,5 +4,4 @@ output
 output.jpeg
 svg2gcode/examples
 svg2gcode/lib/tests
-svg2gcode/web
 svg2gcode/target
