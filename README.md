@@ -21,8 +21,7 @@ The core functionality is built upon:
 ## Requirements
 
 - Python 3.x
-- Rust/Cargo 
-- Required Python packages in `requirements.txt`
+- Rust/Cargo
 
 ## Setup
 
