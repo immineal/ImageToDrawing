@@ -4,6 +4,8 @@ from PIL import Image
 import os
 import hashlib
 import subprocess
+import shlex
+import shutil
 
 app = Flask(__name__)
 
@@ -59,12 +61,17 @@ def process_image():
         image = image.resize((512, 512), Image.Resampling.LANCZOS)
         image.save(image_path, "JPEG", quality=95)
         
-        # Run preprocessing
-        subprocess.run([
+        # Change this condition
+        use_bg_removal = 'remove_bg' in request.form
+        preprocessing_cmd = [
             'python3', 'preprocessing.py',
             image_path,
             nobg_path
-        ], check=True)
+        ]
+        if use_bg_removal:
+            preprocessing_cmd.append('--remove-bg')  # Use double dash here
+
+        subprocess.run(preprocessing_cmd, check=True)
         
         # Update img_name.txt
         with open('img_name.txt', 'w') as f:
@@ -78,18 +85,45 @@ def process_image():
         subprocess.run(['cargo', 'run'], check=True)
         
         # Run postprocessing
-        output_path = os.path.join(OUTPUT_FOLDER, f"{unique_id}.svg")
+        output_svg = os.path.join(OUTPUT_FOLDER, f"{unique_id}.svg")
         subprocess.run([
             'python3', 'postprocessing.py',
             'output.jpeg',
-            output_path,
-            '--min-length', path_length
+            output_svg,
+            '--min-length', path_length,
+            '--canvas-width', '115',
+            '--canvas-height', '85'
         ], check=True)
+
+        # New: G-code generation
+        gcode_folder = os.path.join(OUTPUT_FOLDER, 'gcode')
+        os.makedirs(gcode_folder, exist_ok=True)
+        output_gcode = os.path.join(gcode_folder, f"{unique_id}.gcode")
         
+        # Get sequences from form data
+        tool_on_sequence = request.form.get('toolOn', 'M3')
+        tool_off_sequence = request.form.get('toolOff', 'M5')
+
+        # Run cargo command in svg2gcode directory
+        cargo_command = [
+            'cargo', 'run', '--release', '--',
+            f'../{output_svg}',
+            '--off', shlex.quote(tool_off_sequence),
+            '--on', shlex.quote(tool_on_sequence),
+            '-o', f'../{output_gcode}'
+        ]
+        
+        subprocess.run(
+            cargo_command,
+            check=True,
+            cwd='svg2gcode'  # Run in different directory
+        )
+
         return jsonify({
             'success': True,
             'message': 'Image processed successfully',
-            'output_file': f"{unique_id}.svg"  # Just return filename, not full path
+            'output_file': f"{unique_id}.svg",
+            'gcode_file': f"{unique_id}.gcode"
         })
         
     except subprocess.CalledProcessError as e:
@@ -106,6 +140,10 @@ def process_image():
 @app.route('/output/<filename>')
 def serve_output(filename):
     return send_from_directory(OUTPUT_FOLDER, filename)
+
+@app.route('/output/gcode/<filename>')
+def serve_gcode(filename):
+    return send_from_directory(os.path.join(OUTPUT_FOLDER, 'gcode'), filename)
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
