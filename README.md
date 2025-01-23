@@ -10,6 +10,11 @@ A web application that converts uploaded images into artistic line art SVG drawi
 - Outputs SVG vector graphics
 - Web interface for easy usage
 
+## Attribution
+
+The Rust image processing code is adapted from [ImageToLines by RandomGamingDev](https://github.com/RandomGamingDev/ImageToLines).
+Thank you for that.
+
 ## Requirements
 
 - Python 3.x
@@ -56,7 +61,7 @@ python server.py
 
    - server.py - Flask web server handling image upload and processing
    - preprocessing.py - Image preparation and background removal
-   - main.rs - Rust-based image processing core
+   - main.rs - Rust-based image processing core (adapted from ImageToLines)
    - postprocessing.py - SVG generation and optimization
 
 ## License
