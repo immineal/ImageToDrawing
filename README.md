@@ -1,43 +1,43 @@
 # Image to Line Art Converter
 
-A web application that converts uploaded images into artistic line art SVG drawings using a combination of Python and Rust processing.
+A web application that converts uploaded images into artistic line art SVG drawings and G-code output using a combination of Python and Rust processing.
 
 ## Features
 
-- Image preprocessing with background removal
-- Configurable contrast settings 
-- Adjustable path length for line art generation
-- Outputs SVG vector graphics
-- Web interface for easy usage
+- Image preprocessing with background removal 
+- Configurable contrast settings for line detection
+- Adjustable path length for line art optimization
+- Outputs both SVG vector graphics and G-code
+- Web interface with live preview
+- Custom G-code tool on/off commands
+- Batch processing support
 
 ## Attribution
 
-The Rust image processing code is adapted from [ImageToLines by RandomGamingDev](https://github.com/RandomGamingDev/ImageToLines).
-The Rust gcode generation code is adapted from [svg2gcode by sameer](https://github.com/sameer/svg2gcode).
-Thank you for that.
-
+The core functionality is built upon:
+- [ImageToLines by RandomGamingDev](https://github.com/RandomGamingDev/ImageToLines) - Rust image processing
+- [svg2gcode by sameer](https://github.com/sameer/svg2gcode) - G-code generation
 
 ## Requirements
 
 - Python 3.x
-- Rust/Cargo
-- Required Python packages:
-```sh
-pip install -r requirements.txt
-```
+- Rust/Cargo 
+- Required Python packages in `requirements.txt`
 
 ## Setup
 
 1. Install dependencies:
 ```sh
 pip install -r requirements.txt
-cargo build
+cargo build --release
 ```
 
 2. Ensure these directories exist:
 
-   - nobg - For processed images without background
-   - images/output - For generated SVG files
+   - images - For uploaded images
+   - nobg - For background-removed images
+   - output - For generated SVG files
+   - gcode - For generated G-code files
 
 ## Usage
 
@@ -46,25 +46,15 @@ cargo build
 python server.py
 ```
 
-2. Access the web interface at `http://localhost:5000`
+2. Access the web interface at http://localhost:5000
 
-3. Upload an image and adjust parameters:
-   - **Contrast**: Controls the threshold for line generation (default: 12)
-   - **Path Length**: Minimum length for SVG path segments (default: 25)
+3. Upload an image and configure settings:
 
-4. The server will:
-   - Crop and resize the image to 512x512
-   - Remove the background
-   - Process the image through the Rust engine
-   - Generate an SVG line art drawing
-   - Return a downloadable SVG file
-
-## Project Structure
-
-   - server.py - Flask web server handling image upload and processing
-   - preprocessing.py - Image preparation and background removal
-   - main.rs - Rust-based image processing core (adapted from ImageToLines)
-   - postprocessing.py - SVG generation and optimization
+   - Contrast Threshold: Controls line detection sensitivity (0-50)
+   - Minimum Path Length: Filters short path segments (0-150)
+   - Remove Background: Toggle background removal
+   - Tool On Command (default: M3)
+   - Tool Off Command (default: M5)
 
 ## License
 
